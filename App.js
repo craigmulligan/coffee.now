@@ -4,20 +4,32 @@ import { StyleSheet, Text, View } from 'react-native'
 import Places from 'google-places-web'
 import { LatLonSpherical as Geo } from 'geodesy'
 import { Ionicons } from '@expo/vector-icons'
+import Shake from './shake'
 
-Places.apiKey = ''
+Places.apiKey = Constants.manifest.extra.places_api_key
 Places.debug = __DEV__ // boolean;
+const COOLORS = ['#FFCD72', '#FF928B']
 
 export default class App extends React.Component {
   constructor() {
     super()
+    this.shake = new Shake()
     this.state = {
       target: {},
       bearing: 0,
+      journey_complete: false,
     }
   }
 
   componentDidMount = async () => {
+    this.shake.start(() => {
+      this.setState(prevState => ({
+        journey_complete: !prevState.journey_complete,
+      }))
+
+      Haptic.notification(Haptic.NotificationTypes.Success)
+    })
+
     let { status } = await Permissions.askAsync(Permissions.LOCATION)
     if (status !== 'granted') {
       this.setState({
@@ -40,6 +52,10 @@ export default class App extends React.Component {
     } catch (err) {
       console.log(err)
     }
+  }
+
+  componentWillUnmount() {
+    this.shake.stop()
   }
 
   _bearing() {
@@ -66,9 +82,7 @@ export default class App extends React.Component {
     if (this.state.distance < 20) {
       this.setState(
         {
-          journey: {
-            complete: true,
-          },
+          journey_complete: true,
         },
         () => {
           Haptic.notification(Haptic.NotificationTypes.Success)
@@ -79,31 +93,27 @@ export default class App extends React.Component {
 
   _style() {
     return StyleSheet.create({
+      container: {
+        flex: 1,
+        backgroundColor: COOLORS[Number(this.state.journey_complete)],
+        alignItems: 'center',
+        justifyContent: 'center',
+      },
       arrow: {
+        color: COOLORS[Number(!this.state.journey_complete)],
         transform: [{ rotateZ: `${this.state.bearing}deg` }],
       },
     })
   }
 
   render() {
+    const styles = this._style()
     return (
       <View style={styles.container}>
         <Text>{this.state.bearing}</Text>
         <Text>{this.state.distance}</Text>
-        <Ionicons style={this._style().arrow} name="md-arrow-up" size={500} />
+        <Ionicons style={styles.arrow} name="md-arrow-up" size={500} />
       </View>
     )
   }
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  arrow: {
-    transform: [{ rotateZ: '45deg' }],
-  },
-})
