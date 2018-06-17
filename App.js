@@ -7,7 +7,7 @@ import { Ionicons } from '@expo/vector-icons'
 import Shake from './shake'
 
 Places.apiKey = Constants.manifest.extra.places_api_key
-Places.debug = __DEV__ // boolean;
+Places.debug = process.env.NODE_ENV !== 'production'
 
 export default class App extends React.Component {
   constructor() {
@@ -47,19 +47,22 @@ export default class App extends React.Component {
     } else {
       this.setState({ message: 'Coffee.\n Now.' })
     }
-    let places = await Places.nearbysearch({
-      location: `${location.coords.latitude},${location.coords.longitude}`,
-      rankby: 'distance',
-      opennow: true,
-      type: ['cafe'],
-    })
+    try {
+      let places = await Places.nearbysearch({
+        location: `${location.coords.latitude},${location.coords.longitude}`,
+        rankby: 'distance',
+        opennow: true,
+        type: ['cafe'],
+      })
 
-    const i = random ? Math.floor(Math.random() * places.length) : 0
-    console.log({ i })
-    this.setState({
-      target: places[i],
-      message: null,
-    })
+      const i = random ? Math.floor(Math.random() * places.length) : 0
+      this.setState({
+        target: places[i],
+        message: null,
+      })
+    } catch (err) {
+      this.setState({ message: err.message })
+    }
   }
 
   _getLocation = async () => {
