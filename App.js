@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { Fragment } from 'react'
 import { Constants, Location, Permissions, Haptic } from 'expo'
 import { StyleSheet, Text, View } from 'react-native'
 import Places from 'google-places-web'
@@ -8,112 +8,161 @@ import Shake from './shake'
 
 Places.apiKey = Constants.manifest.extra.places_api_key
 Places.debug = __DEV__ // boolean;
-const COOLORS = ['#FFCD72', '#FF928B']
 
 export default class App extends React.Component {
   constructor() {
     super()
     this.shake = new Shake()
     this.state = {
-      target: {},
+      message: 'Coffee. Now.',
+      target: null,
+      trueHeading: 0,
       bearing: 0,
-      journey_complete: false,
     }
   }
 
   componentDidMount = async () => {
-    this.shake.start(() => {
-      this.setState(prevState => ({
-        journey_complete: !prevState.journey_complete,
-      }))
-
+    // Watch for shake event
+    this.shake.start(async () => {
       Haptic.notification(Haptic.NotificationTypes.Success)
+      this._onComplete()
+
+      const startLocation = await this._getLocation()
+      await this._getTarget(startLocation, { random: true })
     })
 
-    let { status } = await Permissions.askAsync(Permissions.LOCATION)
-    if (status !== 'granted') {
-      this.setState({
-        errorMessage: 'Permission to access location was denied',
-      })
-    }
-    try {
-      let location = await Location.getCurrentPositionAsync({})
-      this.setState({ location: location })
-      let places = await Places.nearbysearch({
-        location: `${location.coords.latitude},${location.coords.longitude}`,
-        rankby: 'distance',
-        opennow: true,
-        type: ['cafe'],
-      })
-
-      this.setState({ target: places[0] }, () => {
-        this._bearing()
-      })
-    } catch (err) {
-      console.log(err)
-    }
+    const startLocation = await this._getLocation()
+    await this._getTarget(startLocation)
+    //
+    this._watch()
   }
 
   componentWillUnmount() {
     this.shake.stop()
   }
 
-  _bearing() {
-    Expo.Location.watchHeadingAsync(({ trueHeading }) => {
-      const latLng = new Geo(
-        this.state.location.coords.latitude,
-        this.state.location.coords.longitude,
-      )
+  _getTarget = async (location, { random } = { random: false }) => {
+    if (random) {
+      this.setState({ message: 'Oh, you crazy.' })
+    } else {
+      this.setState({ message: 'Coffee.\n Now.' })
+    }
+    let places = await Places.nearbysearch({
+      location: `${location.coords.latitude},${location.coords.longitude}`,
+      rankby: 'distance',
+      opennow: true,
+      type: ['cafe'],
+    })
 
-      const targetLocale = this.state.target.geometry.location
-      const to = new Geo(targetLocale.lat, targetLocale.lng)
-      const bearing = latLng.bearingTo(to)
-
-      this.setState({
-        bearing: bearing - trueHeading,
-        distance: latLng.distanceTo(to),
-      })
-
-      return bearing
+    const i = random ? Math.floor(Math.random() * places.length) : 0
+    console.log({ i })
+    this.setState({
+      target: places[i],
+      message: null,
     })
   }
 
-  _areWeThereYet() {
-    if (this.state.distance < 20) {
-      this.setState(
-        {
-          journey_complete: true,
-        },
-        () => {
-          Haptic.notification(Haptic.NotificationTypes.Success)
-        },
-      )
+  _getLocation = async () => {
+    return Expo.Location.getCurrentPositionAsync({ enableHighAccuracy: true })
+  }
+
+  _watch = async () => {
+    // grab location right now then watch
+    let { status } = await Permissions.askAsync(Permissions.LOCATION)
+    if (status !== 'granted') {
+      this.setState({
+        message: 'Permission to access location was denied :(',
+      })
     }
+    // watch
+    Location.watchPositionAsync({}, location => {
+      this.setState({ location: location }, () => {
+        this._areWeThereYet()
+      })
+    })
+
+    Location.watchHeadingAsync(({ trueHeading }) => {
+      if (this.state.location && this.state.target) {
+        this._getBearing(trueHeading)
+      }
+    })
+  }
+
+  _getBearing(trueHeading) {
+    const { location, target } = this.state
+    const latLng = new Geo(location.coords.latitude, location.coords.longitude)
+
+    const targetLocale = target.geometry.location
+    const to = new Geo(targetLocale.lat, targetLocale.lng)
+    const bearing = latLng.bearingTo(to)
+
+    this.setState({
+      bearing: bearing - trueHeading,
+      distance: latLng.distanceTo(to),
+    })
+
+    return bearing
+  }
+
+  _areWeThereYet() {
+    if (this.state.distance < 10) {
+      this.setState({ message: 'Enjoy!' })
+      this._onComplete()
+    }
+  }
+
+  _onComplete() {
+    this.setState(
+      {
+        target: null,
+      },
+      () => {
+        Haptic.notification(Haptic.NotificationTypes.Success)
+      },
+    )
   }
 
   _style() {
     return StyleSheet.create({
-      container: {
-        flex: 1,
-        backgroundColor: COOLORS[Number(this.state.journey_complete)],
-        alignItems: 'center',
-        justifyContent: 'center',
-      },
       arrow: {
-        color: COOLORS[Number(!this.state.journey_complete)],
         transform: [{ rotateZ: `${this.state.bearing}deg` }],
       },
     })
   }
 
   render() {
-    const styles = this._style()
+    const { message, target } = this.state
     return (
       <View style={styles.container}>
-        <Text>{this.state.bearing}</Text>
-        <Text>{this.state.distance}</Text>
-        <Ionicons style={styles.arrow} name="md-arrow-up" size={500} />
+        {!message &&
+          target && (
+            <Fragment>
+              <Text style={styles.meta}>{target.name.toUpperCase()}</Text>
+              <Ionicons
+                style={this._style().arrow}
+                name="md-arrow-up"
+                size={500}
+              />
+            </Fragment>
+          )}
+        {message && <Text style={styles.message}>{message}</Text>}
       </View>
     )
   }
+}
+
+const styles = {
+  container: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  message: {
+    fontWeight: 'bold',
+    fontSize: 30,
+  },
+  meta: {
+    fontWeight: 'bold',
+    fontSize: 30,
+  },
 }
