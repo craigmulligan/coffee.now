@@ -31,10 +31,16 @@ export default class App extends React.Component {
       await this._getTarget(startLocation, { random: true })
     })
 
-    const startLocation = await this._getLocation()
-    await this._getTarget(startLocation)
-    //
-    this._watch()
+    const allowed = await this._getPermish()
+    if (allowed) {
+      const startLocation = await this._getLocation()
+      await this._getTarget(startLocation)
+      this._watch()
+    } else {
+      this.setState({
+        message: 'Cant do anything without location permissions',
+      })
+    }
   }
 
   componentWillUnmount() {
@@ -65,18 +71,19 @@ export default class App extends React.Component {
     }
   }
 
+  _getPermish = async () => {
+    let { status } = await Permissions.askAsync(Permissions.LOCATION)
+    if (status == 'granted') {
+      return true
+    }
+    return false
+  }
+
   _getLocation = async () => {
     return Expo.Location.getCurrentPositionAsync({ enableHighAccuracy: true })
   }
 
   _watch = async () => {
-    // grab location right now then watch
-    let { status } = await Permissions.askAsync(Permissions.LOCATION)
-    if (status !== 'granted') {
-      this.setState({
-        message: 'Permission to access location was denied :(',
-      })
-    }
     // watch
     Location.watchPositionAsync({}, location => {
       this.setState({ location: location }, () => {
