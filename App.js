@@ -84,12 +84,16 @@ export default class App extends React.Component {
   }
 
   _watch = async () => {
-    // watch
-    Location.watchPositionAsync({}, location => {
-      this.setState({ location: location }, () => {
-        this._areWeThereYet()
-      })
-    })
+    // watch location & heading
+    Location.watchPositionAsync(
+      { enableHighAccuracy: true, distanceInterval: 1 },
+      location => {
+        this.setState({ location: location }, () => {
+          this._getBearing(location.heading)
+          this._areWeThereYet()
+        })
+      },
+    )
 
     Location.watchHeadingAsync(({ trueHeading }) => {
       if (this.state.location && this.state.target) {
@@ -99,6 +103,7 @@ export default class App extends React.Component {
   }
 
   _getBearing(trueHeading) {
+    // get bearing & distance
     const { location, target } = this.state
     const latLng = new Geo(location.coords.latitude, location.coords.longitude)
 
@@ -141,13 +146,14 @@ export default class App extends React.Component {
   }
 
   render() {
-    const { message, target } = this.state
+    const { message, target, distance } = this.state
     return (
       <View style={styles.container}>
         {!message &&
           target && (
             <Fragment>
-              <Text style={styles.meta}>{target.name.toUpperCase()}</Text>
+              <Text style={styles.title}>{target.name.toUpperCase()}</Text>
+              <Text style={styles.meta}>{Math.floor(distance)}m</Text>
               <Ionicons
                 style={this._style().arrow}
                 name="md-arrow-up"
@@ -171,8 +177,13 @@ const styles = {
     fontWeight: 'bold',
     fontSize: 30,
   },
+  title: {
+    marginTop: 25,
+    fontWeight: 'bold',
+    fontSize: 25,
+  },
   meta: {
     fontWeight: 'bold',
-    fontSize: 30,
+    fontSize: 15,
   },
 }
